@@ -4,7 +4,7 @@
 
 - **`apps/dashboard`**: админ-дашборд и API для iOS-приложения (Next.js, Postgres, Drizzle).
 - **`apps/ios`**: iOS-приложение (SwiftUI, Packet Tunnel и sing-box, AdMob, RevenueCat или StoreKit 2). *В разработке.*
-- **`infra/node`**: настройка VPN-нод. Инструкция в [docs/node-setup.md](docs/node-setup.md).
+- **`infra/node/install.sh`**: установка VPN-ноды одной командой. Скрипт ставит 3x-ui и Xray, создаёт VLESS + Reality и регистрирует ноду в дашборде. Подробнее в [docs/node-setup.md](docs/node-setup.md).
 
 ![Серверы](docs/screenshots/servers.png)
 
@@ -45,6 +45,15 @@ POSTGRES_PASSWORD=... docker compose up -d --build
 
 Поднимутся Postgres, миграции, дашборд на `:3000` и cron, который раз в минуту проверяет ноды.
 Перед дашбордом поставьте HTTPS-прокси (Caddy или nginx): вебхуки Apple и RevenueCat работают только по HTTPS.
+
+## Добавление серверов
+
+Задайте `NODE_REGISTRATION_TOKEN` в `.env` дашборда, затем на чистом VPS выполните команду со страницы **Серверы**:
+
+```bash
+curl -fsSL https://<дашборд>/install.sh | sudo bash -s -- \
+  --dashboard https://<дашборд> --token <NODE_REGISTRATION_TOKEN> --country NL
+```
 
 ## Настройка в дашборде
 

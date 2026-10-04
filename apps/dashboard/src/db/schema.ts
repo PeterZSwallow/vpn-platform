@@ -41,6 +41,10 @@ export const servers = pgTable("servers", {
 	panelUrl: text("panel_url"),
 	panelUsername: text("panel_username"),
 	panelPassword: text("panel_password"),
+	// 3x-ui 3.x API token; used instead of username/password when set
+	panelApiToken: text("panel_api_token"),
+	// PEM of the panel's self-signed certificate, pinned for HTTPS to the panel
+	panelTlsCert: text("panel_tls_cert"),
 	// 3x-ui inbound id, or Marzban inbound tag
 	panelInbound: text("panel_inbound"),
 	// Used only when panelType = static: one UUID shared by every device

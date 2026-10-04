@@ -1,4 +1,5 @@
 import { asc } from "drizzle-orm"
+import { headers } from "next/headers"
 import Link from "next/link"
 import { db, schema } from "@/db"
 import { checkServersNow, testServerPanel, toggleServer } from "./actions"
@@ -17,6 +18,11 @@ export default async function ServersPage() {
 		.from(schema.servers)
 		.orderBy(asc(schema.servers.sortOrder), asc(schema.servers.name))
 
+	const h = await headers()
+	const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`
+	const regToken = process.env.NODE_REGISTRATION_TOKEN
+	const installCmd = `curl -fsSL ${origin}/install.sh | sudo bash -s -- \\\n  --dashboard ${origin} --token ${regToken} \\\n  --country NL --city Amsterdam --name "Netherlands #1"`
+
 	return (
 		<div className="space-y-4">
 			<div className="flex flex-wrap items-center gap-3">
@@ -30,6 +36,34 @@ export default async function ServersPage() {
 					+ Добавить сервер
 				</Link>
 			</div>
+
+			<details className="card" open={rows.length === 0}>
+				<summary className="cursor-pointer font-medium">
+					Установить новую ноду одной командой
+				</summary>
+				{regToken ? (
+					<div className="mt-3 space-y-2 text-sm text-zinc-400">
+						<p>
+							Выполните на чистом VPS (Ubuntu/Debian) под root. Скрипт поставит
+							3x-ui и Xray, создаст VLESS + Reality inbound и сам добавит сервер
+							в этот список.
+						</p>
+						<pre className="overflow-x-auto rounded-lg bg-zinc-950 p-3 text-xs text-emerald-300">
+							{installCmd}
+						</pre>
+						<p className="text-xs">
+							Другие опции: <code>--tier premium</code>, <code>--sni</code>,{" "}
+							<code>--port</code>, <code>--panel-port</code>. Порт панели должен
+							быть доступен с сервера дашборда.
+						</p>
+					</div>
+				) : (
+					<p className="mt-3 text-sm text-zinc-400">
+						Задайте <code>NODE_REGISTRATION_TOKEN</code> в .env дашборда, чтобы
+						ноды могли регистрироваться автоматически.
+					</p>
+				)}
+			</details>
 
 			<div className="card overflow-x-auto p-0">
 				<table className="w-full min-w-[720px]">

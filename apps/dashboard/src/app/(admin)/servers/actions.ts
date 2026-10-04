@@ -35,6 +35,8 @@ const serverForm = z.object({
 	panelUrl: optional,
 	panelUsername: optional,
 	panelPassword: optional,
+	panelApiToken: optional,
+	panelTlsCert: optional,
 	panelInbound: optional,
 	staticUuid: optional,
 })

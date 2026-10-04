@@ -185,6 +185,13 @@ export function ServerForm({
 					placeholder={server ? "оставьте пустым, чтобы не менять" : ""}
 				/>
 				<Field
+					name="panelApiToken"
+					label="API-токен (3x-ui 3.x)"
+					type="password"
+					placeholder={server?.panelApiToken ? "задан, пусто = не менять" : ""}
+					hint="Если задан, используется вместо логина и пароля"
+				/>
+				<Field
 					name="panelInbound"
 					label="Inbound"
 					defaultValue={server?.panelInbound}
@@ -196,6 +203,22 @@ export function ServerForm({
 					defaultValue={server?.staticUuid}
 					hint="Без панели доступ нельзя отозвать по окончании подписки"
 				/>
+				<div className="sm:col-span-2">
+					<label className="label" htmlFor="panelTlsCert">
+						Сертификат панели (PEM)
+					</label>
+					<textarea
+						className="input h-28 font-mono text-xs"
+						id="panelTlsCert"
+						name="panelTlsCert"
+						defaultValue={server?.panelTlsCert ?? ""}
+						placeholder="-----BEGIN CERTIFICATE-----"
+					/>
+					<p className="mt-1 text-xs text-zinc-500">
+						Для самоподписанного сертификата панели: дашборд будет доверять
+						только ему
+					</p>
+				</div>
 			</section>
 
 			<button className="btn" type="submit">
