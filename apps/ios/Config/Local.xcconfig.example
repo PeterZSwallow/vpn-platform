@@ -1,0 +1,6 @@
+// Copy to Local.xcconfig and fill in.
+APP_DISPLAY_NAME = My VPN
+APP_BUNDLE_ID = com.yourcompany.vpn
+DEVELOPMENT_TEAM = ABCDE12345
+API_BASE_URL = https:/$()/admin.yourdomain.com
+ADMOB_APP_ID = ca-app-pub-XXXXXXXXXXXXXXXX~YYYYYYYYYY

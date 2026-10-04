@@ -1,0 +1,6 @@
+*.xcodeproj
+Config/Local.xcconfig
+Frameworks/LibXray.xcframework
+build/
+DerivedData/
+.build/

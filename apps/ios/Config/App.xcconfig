@@ -1,0 +1,13 @@
+// Defaults. Put your own values in Config/Local.xcconfig (not committed).
+APP_DISPLAY_NAME = VPN
+APP_BUNDLE_ID = com.example.vpn
+APP_GROUP_ID = group.$(APP_BUNDLE_ID)
+DEVELOPMENT_TEAM =
+
+// Dashboard base URL. "//" starts a comment in xcconfig, hence the $().
+API_BASE_URL = https:/$()/admin.example.com
+
+// Google's test App ID; replace with yours from AdMob
+ADMOB_APP_ID = ca-app-pub-3940256099942544~1458002511
+
+#include? "Local.xcconfig"

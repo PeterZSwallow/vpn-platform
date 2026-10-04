@@ -1,0 +1,50 @@
+name: iOS build
+
+# Compiles the app and the Packet Tunnel for the simulator (no signing) to
+# catch build errors. Runs on macOS, which uses more GitHub Actions minutes.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "apps/ios/**"
+      - ".github/workflows/ios.yml"
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: apps/ios
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache: false
+
+      - name: Cache LibXray.xcframework
+        id: libxray
+        uses: actions/cache@v4
+        with:
+          path: apps/ios/Frameworks/LibXray.xcframework
+          key: libxray-${{ hashFiles('apps/ios/scripts/build-libxray.sh') }}
+
+      - name: Build LibXray.xcframework
+        if: steps.libxray.outputs.cache-hit != 'true'
+        run: ./scripts/build-libxray.sh
+
+      - name: Generate Xcode project
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build for simulator
+        run: |
+          xcodebuild build \
+            -project VPN.xcodeproj -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/DerivedData \
+            CODE_SIGNING_ALLOWED=NO \
+            -quiet

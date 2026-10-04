@@ -3,7 +3,7 @@
 Платформа для VPN-сервиса на VLESS + Reality:
 
 - **`apps/dashboard`**: админ-дашборд и API для iOS-приложения (Next.js, Postgres, Drizzle).
-- **`apps/ios`**: iOS-приложение (SwiftUI, Packet Tunnel и Xray-core через libXray, AdMob, RevenueCat или StoreKit 2).
+- **`apps/ios`**: iOS-приложение (SwiftUI, Packet Tunnel и Xray-core через libXray, AdMob, RevenueCat или StoreKit 2). Сборка описана в [apps/ios/README.md](apps/ios/README.md).
 - **`infra/node/install.sh`**: установка VPN-ноды одной командой. Скрипт ставит 3x-ui и Xray, создаёт VLESS + Reality и регистрирует ноду в дашборде. Подробнее в [docs/node-setup.md](docs/node-setup.md).
 
 ![Серверы](docs/screenshots/servers.png)
