@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm"
 import { db, schema } from "@/db"
 import type { Server } from "@/db/schema"
 
-function tcpPing(host: string, port: number, timeoutMs = 4000) {
+export function tcpPing(host: string, port: number, timeoutMs = 4000) {
 	return new Promise<number>((resolve, reject) => {
 		const started = performance.now()
 		const socket = connect({ host, port })

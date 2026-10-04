@@ -85,6 +85,21 @@ export function ServerForm({
 					defaultValue={server?.port ?? 443}
 					required
 				/>
+				<Field
+					name="ipv6Prefix"
+					label="IPv6-префикс ноды"
+					defaultValue={server?.ipv6Prefix}
+					placeholder="2a01:4f8:c17:1234::/64"
+					hint="Каждое устройство получит свой случайный IPv6 из этой подсети"
+				/>
+				<label className="flex items-center gap-2 self-center text-sm">
+					<input
+						type="checkbox"
+						name="exposeIpv4"
+						defaultChecked={server?.exposeIpv4 ?? true}
+					/>
+					Отдавать клиентам и IPv4 (для устройств без IPv6)
+				</label>
 				<div>
 					<label className="label" htmlFor="tier">
 						Тариф

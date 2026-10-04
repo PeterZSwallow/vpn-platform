@@ -3,8 +3,12 @@ import { NextResponse } from "next/server"
 import { z } from "zod"
 import { db, schema } from "@/db"
 import { safeEqual } from "@/lib/auth"
-import { checkServer } from "@/lib/health"
+import { checkServer, tcpPing } from "@/lib/health"
+import { normalizeIpv6Prefix, randomIpv6InPrefix } from "@/lib/ipv6"
 import { testPanel } from "@/lib/panels"
+
+// Errors meaning the dashboard host itself has no IPv6 connectivity
+const NO_LOCAL_IPV6 = new Set(["ENETUNREACH", "EADDRNOTAVAIL", "EAFNOSUPPORT"])
 
 const body = z.object({
 	name: z.string().trim().min(1).max(64),
@@ -13,6 +17,8 @@ const body = z.object({
 	tier: z.enum(["free", "premium"]).default("free"),
 	host: z.string().trim().min(1),
 	port: z.number().int().min(1).max(65535),
+	ipv6Prefix: z.string().optional(),
+	exposeIpv4: z.boolean().default(true),
 	realityPublicKey: z.string().min(1),
 	realityShortId: z.string().regex(/^[0-9a-f]{0,16}$/),
 	realitySni: z.string().min(1),
@@ -47,7 +53,21 @@ export async function POST(req: Request) {
 			{ status: 400 },
 		)
 	}
-	const values = { ...parsed.data, panelType: "3x-ui" as const }
+	let ipv6Prefix: string | null = null
+	try {
+		ipv6Prefix = parsed.data.ipv6Prefix
+			? normalizeIpv6Prefix(parsed.data.ipv6Prefix)
+			: null
+	} catch (e) {
+		return NextResponse.json(
+			{ error: "invalid_ipv6_prefix", message: String(e) },
+			{ status: 400 },
+		)
+	}
+	if (!ipv6Prefix && !parsed.data.exposeIpv4) {
+		return NextResponse.json({ error: "ipv6_prefix_required" }, { status: 400 })
+	}
+	const values = { ...parsed.data, ipv6Prefix, panelType: "3x-ui" as const }
 
 	const existing = await db.query.servers.findFirst({
 		where: and(
@@ -74,11 +94,25 @@ export async function POST(req: Request) {
 	}
 	const health = await checkServer(server)
 
+	// Probe a random address from the prefix: proves AnyIP + routing work.
+	// null = the dashboard host itself has no IPv6, so it cannot tell.
+	let ipv6Reachable: boolean | null = null
+	if (server.ipv6Prefix) {
+		try {
+			await tcpPing(randomIpv6InPrefix(server.ipv6Prefix), server.port)
+			ipv6Reachable = true
+		} catch (e) {
+			const code = (e as NodeJS.ErrnoException).code
+			ipv6Reachable = NO_LOCAL_IPV6.has(code ?? "") ? null : false
+		}
+	}
+
 	return NextResponse.json({
 		id: server.id,
 		updated: !!existing,
 		panelOk: !panelError,
 		panelError,
 		reachable: health.ok,
+		ipv6Reachable,
 	})
 }

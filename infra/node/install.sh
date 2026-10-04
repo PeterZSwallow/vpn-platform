@@ -21,6 +21,10 @@ VLESS_PORT=443
 PANEL_PORT=""
 HOST=""
 FORCE=0
+# IPv6: give each client its own address from the node's /64 (auto-detected)
+IPV6=1
+IPV6_PREFIX=""
+IPV6_ONLY=0
 XUI_VERSION="latest"
 # Xray core used instead of the one bundled with 3x-ui. sing-box clients (the
 # iOS app) fail REALITY authentication against Xray 26.x, so pin a release
@@ -46,6 +50,11 @@ Usage: install.sh [options]
   --host HOST         Public IP/domain clients connect to (default: auto-detect)
   --xui-version TAG   3x-ui release tag (default: latest)
   --xray-version TAG  Xray-core release tag (default: v25.12.8, sing-box compatible)
+  --no-ipv6           Do not set up per-client IPv6 addresses
+  --ipv6-prefix P     Prefix to hand out to clients (default: upper /65 of the
+                      server's /64, e.g. 2a01:4f8:c17:1234:8000::/65)
+  --ipv6-only         Never give the server's IPv4 to clients (devices
+                      without IPv6 cannot use this server)
   --force             Reinstall over an existing 3x-ui installation
 EOF
 }
@@ -64,6 +73,9 @@ while [[ $# -gt 0 ]]; do
 	--host) HOST="$2"; shift 2 ;;
 	--xui-version) XUI_VERSION="$2"; shift 2 ;;
 	--xray-version) XRAY_VERSION="$2"; shift 2 ;;
+	--no-ipv6) IPV6=0; shift ;;
+	--ipv6-prefix) IPV6_PREFIX="$2"; shift 2 ;;
+	--ipv6-only) IPV6_ONLY=1; shift ;;
 	--force) FORCE=1; shift ;;
 	-h | --help) usage; exit 0 ;;
 	*) echo "Unknown option: $1" >&2; usage; exit 1 ;;
@@ -84,11 +96,36 @@ json_escape() {
 	printf '%s' "$s"
 }
 
+# Upper half (/65) of the /64 that contains $1, e.g. 2a01:4f8:c17:1234::1 -> 2a01:4f8:c17:1234:8000::/65
+client_prefix_from_addr() {
+	local addr=${1%%/*} left right
+	local -a l=() r=() g=()
+	if [[ "$addr" == *::* ]]; then
+		left=${addr%%::*}
+		right=${addr#*::}
+	else
+		left=$addr
+		right=""
+	fi
+	[[ -n "$left" ]] && IFS=: read -ra l <<<"$left"
+	[[ -n "$right" ]] && IFS=: read -ra r <<<"$right"
+	if [[ "$addr" != *::* ]] && ((${#l[@]} != 8)); then return 1; fi
+	g=("${l[@]}")
+	local i
+	for ((i = ${#l[@]} + ${#r[@]}; i < 8; i++)); do g+=(0); done
+	g+=("${r[@]}")
+	((${#g[@]} == 8)) || return 1
+	printf '%x:%x:%x:%x:8000::/65\n' "0x${g[0]}" "0x${g[1]}" "0x${g[2]}" "0x${g[3]}"
+}
+
 rand_alnum() { tr -dc 'A-Za-z0-9' </dev/urandom | head -c "$1" || true; }
 
 # ---------- checks ----------
 [[ $EUID -eq 0 ]] || die "Run as root (sudo)."
 [[ "$TIER" == "free" || "$TIER" == "premium" ]] || die "--tier must be free or premium"
+if [[ $IPV6_ONLY -eq 1 && $IPV6 -eq 0 ]]; then
+	die "--ipv6-only and --no-ipv6 contradict each other"
+fi
 if [[ -n "$DASHBOARD" ]]; then
 	[[ -n "$TOKEN" ]] || die "--token is required with --dashboard"
 	[[ "$COUNTRY" =~ ^[A-Z]{2}$ ]] || die "--country must be a 2-letter code with --dashboard"
@@ -108,8 +145,14 @@ if command -v apt-get >/dev/null; then
 	export DEBIAN_FRONTEND=noninteractive
 	apt-get update -qq
 	apt-get install -y -qq curl openssl tar unzip ca-certificates iproute2 >/dev/null
+	if [[ $IPV6 -eq 1 ]]; then
+		apt-get install -y -qq ndppd >/dev/null 2>&1 || warn "ndppd is not available; IPv6 will only work if the provider routes the /64 to this server"
+	fi
 elif command -v dnf >/dev/null; then
 	dnf install -y -q curl openssl tar unzip ca-certificates iproute
+	if [[ $IPV6 -eq 1 ]]; then
+		dnf install -y -q ndppd >/dev/null 2>&1 || warn "ndppd is not available; IPv6 will only work if the provider routes the /64 to this server"
+	fi
 else
 	die "Only apt (Debian/Ubuntu) and dnf (RHEL/Fedora) are supported."
 fi
@@ -122,6 +165,24 @@ fi
 [[ -n "$PANEL_PORT" ]] || PANEL_PORT=$((20000 + RANDOM % 40000))
 [[ "$PANEL_PORT" != "$VLESS_PORT" ]] || die "--panel-port must differ from --port"
 
+# Detect IPv6 before touching anything, so a failed check leaves the node as is
+LISTEN=""
+if [[ $IPV6 -eq 1 ]]; then
+	V6_ROUTE="$(ip -6 route get 2001:4860:4860::8888 2>/dev/null || true)"
+	V6_SRC="$(sed -nE 's/.* src ([0-9a-fA-F:]+).*/\1/p' <<<"$V6_ROUTE")"
+	V6_DEV="$(sed -nE 's/.* dev ([^ ]+).*/\1/p' <<<"$V6_ROUTE")"
+	if [[ -z "$IPV6_PREFIX" && -n "$V6_SRC" ]]; then
+		IPV6_PREFIX="$(client_prefix_from_addr "$V6_SRC")" || IPV6_PREFIX=""
+	fi
+	if [[ -z "$IPV6_PREFIX" || -z "$V6_DEV" ]]; then
+		if [[ $IPV6_ONLY -eq 1 ]]; then
+			die "No global IPv6 found, cannot use --ipv6-only. Enable IPv6 at your provider or pass --ipv6-prefix."
+		fi
+		warn "No global IPv6 on this server; clients will use IPv4 only."
+		IPV6=0
+		IPV6_PREFIX=""
+	fi
+fi
 # A previous installation holds its own ports; stop it before checking
 systemctl stop x-ui >/dev/null 2>&1 || true
 sleep 1
@@ -137,6 +198,50 @@ net.ipv4.tcp_congestion_control=bbr
 net.ipv4.tcp_fastopen=3
 EOF
 sysctl --system >/dev/null 2>&1 || warn "Could not apply sysctl settings"
+
+# ---------- IPv6 (one address per client) ----------
+# Clients get random addresses from a prefix the kernel treats as local
+# (AnyIP), so the node answers on all of them without configuring each one.
+# By default the upper half of the server's /64 is used: providers put the
+# gateway and the server's own addresses in the low half, so the two never
+# collide. ndppd answers neighbour discovery for the range on providers that
+# do not route the /64 to the server.
+if [[ $IPV6 -eq 1 ]]; then
+	log "Routing $IPV6_PREFIX to this node (one IPv6 per client)"
+	cat >/etc/systemd/system/vpn-anyip.service <<UNIT
+[Unit]
+Description=Route the VPN client IPv6 prefix to this host (AnyIP)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/sbin/ip -6 route replace local $IPV6_PREFIX dev lo
+ExecStop=/sbin/ip -6 route del local $IPV6_PREFIX dev lo
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+	systemctl daemon-reload
+	systemctl enable vpn-anyip >/dev/null 2>&1
+	systemctl restart vpn-anyip
+	ip -6 route show table local | grep -q "${IPV6_PREFIX%/*}" || warn "AnyIP route for $IPV6_PREFIX is not active"
+
+	if command -v ndppd >/dev/null; then
+		cat >/etc/ndppd.conf <<CONF
+proxy $V6_DEV {
+	rule $IPV6_PREFIX {
+		static
+	}
+}
+CONF
+		systemctl enable ndppd >/dev/null 2>&1
+		systemctl restart ndppd || warn "ndppd failed to start"
+	fi
+	# Dual-stack listener: Go's [::] socket also accepts IPv4
+	LISTEN="::"
+fi
 
 # ---------- 3x-ui ----------
 if [[ "$XUI_VERSION" == "latest" ]]; then
@@ -232,7 +337,7 @@ PROBE_UUID="$(cat /proc/sys/kernel/random/uuid)"
 SETTINGS="{\"clients\":[{\"id\":\"$PROBE_UUID\",\"flow\":\"xtls-rprx-vision\",\"email\":\"probe\",\"enable\":true,\"limitIp\":0,\"totalGB\":0,\"expiryTime\":0}],\"decryption\":\"none\",\"fallbacks\":[]}"
 STREAM="{\"network\":\"tcp\",\"security\":\"reality\",\"externalProxy\":[],\"realitySettings\":{\"show\":false,\"xver\":0,\"target\":\"$SNI:443\",\"dest\":\"$SNI:443\",\"serverNames\":[\"$SNI\"],\"privateKey\":\"$PRIVATE_KEY\",\"minClientVer\":\"\",\"maxClientVer\":\"\",\"maxTimediff\":0,\"shortIds\":[\"$SHORT_ID\"],\"settings\":{\"publicKey\":\"$PUBLIC_KEY\",\"fingerprint\":\"chrome\",\"serverName\":\"\",\"spiderX\":\"/\"}},\"tcpSettings\":{\"acceptProxyProtocol\":false,\"header\":{\"type\":\"none\"}}}"
 SNIFF='{"enabled":true,"destOverride":["http","tls","quic"],"metadataOnly":false,"routeOnly":true}'
-INBOUND="{\"up\":0,\"down\":0,\"total\":0,\"remark\":\"vless-reality\",\"enable\":true,\"expiryTime\":0,\"listen\":\"\",\"port\":$VLESS_PORT,\"protocol\":\"vless\",\"settings\":\"$(json_escape "$SETTINGS")\",\"streamSettings\":\"$(json_escape "$STREAM")\",\"sniffing\":\"$(json_escape "$SNIFF")\"}"
+INBOUND="{\"up\":0,\"down\":0,\"total\":0,\"remark\":\"vless-reality\",\"enable\":true,\"expiryTime\":0,\"listen\":\"$LISTEN\",\"port\":$VLESS_PORT,\"protocol\":\"vless\",\"settings\":\"$(json_escape "$SETTINGS")\",\"streamSettings\":\"$(json_escape "$STREAM")\",\"sniffing\":\"$(json_escape "$SNIFF")\"}"
 
 RESP="$(curl -fsSk --max-time 15 -X POST "$PANEL_LOCAL/panel/api/inbounds/add" \
 	-H "Authorization: Bearer $API_TOKEN" -H 'Content-Type: application/json' --data "$INBOUND")"
@@ -266,6 +371,7 @@ REALITY_PRIVATE_KEY=$PRIVATE_KEY
 REALITY_SHORT_ID=$SHORT_ID
 REALITY_SNI=$SNI
 INBOUND_ID=$INBOUND_ID
+IPV6_PREFIX=$IPV6_PREFIX
 PANEL_URL=$PANEL_URL
 PANEL_USER=$PANEL_USER
 PANEL_PASS=$PANEL_PASS
@@ -276,12 +382,19 @@ EOF
 REGISTERED=0
 if [[ -n "$DASHBOARD" ]]; then
 	log "Registering node in $DASHBOARD"
-	BODY="{\"name\":\"$(json_escape "$NAME")\",\"countryCode\":\"$COUNTRY\",\"city\":\"$(json_escape "$CITY")\",\"tier\":\"$TIER\",\"host\":\"$(json_escape "$HOST")\",\"port\":$VLESS_PORT,\"realityPublicKey\":\"$PUBLIC_KEY\",\"realityShortId\":\"$SHORT_ID\",\"realitySni\":\"$(json_escape "$SNI")\",\"fingerprint\":\"chrome\",\"flow\":\"xtls-rprx-vision\",\"panelUrl\":\"$(json_escape "$PANEL_URL")\",\"panelUsername\":\"$PANEL_USER\",\"panelPassword\":\"$PANEL_PASS\",\"panelApiToken\":\"$API_TOKEN\",\"panelInbound\":\"$INBOUND_ID\",\"panelTlsCert\":\"$(json_escape "$PANEL_CERT")\"}"
+	EXPOSE_IPV4=true
+	[[ $IPV6_ONLY -eq 1 ]] && EXPOSE_IPV4=false
+	BODY="{\"name\":\"$(json_escape "$NAME")\",\"countryCode\":\"$COUNTRY\",\"city\":\"$(json_escape "$CITY")\",\"tier\":\"$TIER\",\"host\":\"$(json_escape "$HOST")\",\"port\":$VLESS_PORT,\"ipv6Prefix\":\"$IPV6_PREFIX\",\"exposeIpv4\":$EXPOSE_IPV4,\"realityPublicKey\":\"$PUBLIC_KEY\",\"realityShortId\":\"$SHORT_ID\",\"realitySni\":\"$(json_escape "$SNI")\",\"fingerprint\":\"chrome\",\"flow\":\"xtls-rprx-vision\",\"panelUrl\":\"$(json_escape "$PANEL_URL")\",\"panelUsername\":\"$PANEL_USER\",\"panelPassword\":\"$PANEL_PASS\",\"panelApiToken\":\"$API_TOKEN\",\"panelInbound\":\"$INBOUND_ID\",\"panelTlsCert\":\"$(json_escape "$PANEL_CERT")\"}"
 	if REG="$(curl -fsS --max-time 30 -X POST "$DASHBOARD/api/admin/nodes/register" \
 		-H "Authorization: Bearer $TOKEN" -H 'Content-Type: application/json' --data "$BODY")"; then
 		REGISTERED=1
 		echo "$REG" | grep -q '"panelOk":true' ||
 			warn "Dashboard cannot reach the panel: $REG (is port $PANEL_PORT open to the dashboard?)"
+		if echo "$REG" | grep -q '"ipv6Reachable":false'; then
+			warn "The dashboard could not reach a client IPv6 in $IPV6_PREFIX. The provider may not route it to this server."
+		elif [[ -n "$IPV6_PREFIX" ]] && echo "$REG" | grep -q '"ipv6Reachable":null'; then
+			warn "The dashboard host has no IPv6, so client IPv6 reachability was not checked."
+		fi
 	else
 		warn "Registration failed. Add the server manually with the values below."
 	fi
@@ -299,6 +412,7 @@ cat <<EOF
   Panel login    $PANEL_USER / $PANEL_PASS
   API token      $API_TOKEN
   Inbound ID     $INBOUND_ID
+  Client IPv6    ${IPV6_PREFIX:-disabled}$([[ $IPV6_ONLY -eq 1 ]] && echo " (IPv4 hidden from clients)")
 
   All values are saved in $STATE_FILE
 EOF

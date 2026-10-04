@@ -7,6 +7,7 @@ import { z } from "zod"
 import { db, schema } from "@/db"
 import { requireAdmin } from "@/lib/auth"
 import { checkAllServers, checkServer } from "@/lib/health"
+import { normalizeIpv6Prefix } from "@/lib/ipv6"
 import { testPanel } from "@/lib/panels"
 
 const optional = z
@@ -20,6 +21,8 @@ const serverForm = z.object({
 	city: optional,
 	host: z.string().trim().min(1),
 	port: z.coerce.number().int().min(1).max(65535),
+	ipv6Prefix: optional,
+	exposeIpv4: z.preprocess((v) => v === "on", z.boolean()),
 	tier: z.enum(["free", "premium"]),
 	enabled: z.preprocess((v) => v === "on", z.boolean()),
 	sortOrder: z.coerce.number().int().default(0),
@@ -50,6 +53,12 @@ function parse(formData: FormData) {
 		throw new Error(msg)
 	}
 	const v = result.data
+	if (v.ipv6Prefix) v.ipv6Prefix = normalizeIpv6Prefix(v.ipv6Prefix)
+	if (!v.ipv6Prefix && !v.exposeIpv4) {
+		throw new Error(
+			"Без IPv6-префикса нельзя скрыть IPv4: клиентам не к чему подключаться",
+		)
+	}
 	if (v.panelType === "static" && !v.staticUuid)
 		throw new Error("static: укажите UUID клиента")
 	if (
@@ -100,6 +109,16 @@ export async function toggleServer(id: string, enabled: boolean) {
 export async function checkServersNow() {
 	await requireAdmin()
 	await checkAllServers()
+	revalidatePath("/servers")
+}
+
+/** New personal IPv6 for every device on the next connect (e.g. after the prefix was blocked). */
+export async function resetServerIpv6(id: string) {
+	await requireAdmin()
+	await db
+		.update(schema.deviceClients)
+		.set({ ipv6Address: null })
+		.where(eq(schema.deviceClients.serverId, id))
 	revalidatePath("/servers")
 }
 

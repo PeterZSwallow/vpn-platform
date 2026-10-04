@@ -1,8 +1,13 @@
-import { asc } from "drizzle-orm"
+import { asc, count, gt } from "drizzle-orm"
 import { headers } from "next/headers"
 import Link from "next/link"
 import { db, schema } from "@/db"
-import { checkServersNow, testServerPanel, toggleServer } from "./actions"
+import {
+	checkServersNow,
+	resetServerIpv6,
+	testServerPanel,
+	toggleServer,
+} from "./actions"
 
 export const dynamic = "force-dynamic"
 
@@ -17,6 +22,15 @@ export default async function ServersPage() {
 		.select()
 		.from(schema.servers)
 		.orderBy(asc(schema.servers.sortOrder), asc(schema.servers.name))
+
+	// Many rotations = devices report their IPv6 stopped working (likely blocked)
+	const dayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000)
+	const rotationRows = await db
+		.select({ serverId: schema.deviceClients.serverId, n: count() })
+		.from(schema.deviceClients)
+		.where(gt(schema.deviceClients.ipv6RotatedAt, dayAgo))
+		.groupBy(schema.deviceClients.serverId)
+	const rotations = new Map(rotationRows.map((r) => [r.serverId, r.n]))
 
 	const h = await headers()
 	const origin = `${h.get("x-forwarded-proto") ?? "https"}://${h.get("host")}`
@@ -100,7 +114,24 @@ export default async function ServersPage() {
 									</div>
 								</td>
 								<td className="td font-mono text-xs">
-									{s.host}:{s.port}
+									<span
+										className={s.exposeIpv4 ? "" : "text-zinc-500 line-through"}
+									>
+										{s.host}:{s.port}
+									</span>
+									{s.ipv6Prefix && (
+										<div className="text-sky-400">
+											{s.ipv6Prefix}
+											{rotations.get(s.id) ? (
+												<span
+													className="ml-2 text-amber-400"
+													title="Смен IPv6 по запросу приложений за 24ч"
+												>
+													⟳ {rotations.get(s.id)}
+												</span>
+											) : null}
+										</div>
+									)}
 								</td>
 								<td className="td">
 									{s.tier === "premium" ? "Премиум" : "Free"}
@@ -129,6 +160,17 @@ export default async function ServersPage() {
 								</td>
 								<td className="td">
 									<div className="flex justify-end gap-2">
+										{s.ipv6Prefix && (
+											<form action={resetServerIpv6.bind(null, s.id)}>
+												<button
+													className="btn-ghost"
+													type="submit"
+													title="Каждое устройство получит новый IPv6 при следующем подключении"
+												>
+													Новые IPv6
+												</button>
+											</form>
+										)}
 										<form action={testServerPanel.bind(null, s.id)}>
 											<button className="btn-ghost" type="submit">
 												Тест

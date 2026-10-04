@@ -25,6 +25,12 @@ export const servers = pgTable("servers", {
 	city: text("city"),
 	host: text("host").notNull(),
 	port: integer("port").notNull().default(443),
+	// Node's routed IPv6 prefix (e.g. 2a01:4f8:c17:1234::/64). When set, each
+	// device gets its own random address from it.
+	ipv6Prefix: text("ipv6_prefix"),
+	// Give clients the IPv4 address too (fallback for devices without IPv6).
+	// false = IPv6-only: the node's IPv4 is never sent to the app.
+	exposeIpv4: boolean("expose_ipv4").notNull().default(true),
 	tier: tierEnum("tier").notNull().default("free"),
 	enabled: boolean("enabled").notNull().default(true),
 	sortOrder: integer("sort_order").notNull().default(0),
@@ -89,6 +95,10 @@ export const deviceClients = pgTable(
 			.notNull()
 			.references(() => servers.id, { onDelete: "cascade" }),
 		clientUuid: uuid("client_uuid").notNull(),
+		// This device's personal address in the server's IPv6 prefix
+		ipv6Address: text("ipv6_address"),
+		ipv6Rotations: integer("ipv6_rotations").notNull().default(0),
+		ipv6RotatedAt: timestamp("ipv6_rotated_at", { withTimezone: true }),
 		createdAt: timestamp("created_at", { withTimezone: true })
 			.notNull()
 			.defaultNow(),

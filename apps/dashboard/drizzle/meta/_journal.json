@@ -15,6 +15,13 @@
       "when": 1791121928932,
       "tag": "0001_panel_token_cert",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1791123087104,
+      "tag": "0002_ipv6",
+      "breakpoints": true
     }
   ]
 }

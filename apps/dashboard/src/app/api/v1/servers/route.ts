@@ -30,6 +30,9 @@ export async function GET(req: Request) {
 			tier: s.tier,
 			latencyMs: s.latencyMs,
 			locked: s.tier === "premium" && !status.premium,
+			// Address families the server offers; IPv6-only servers need IPv6 on the device
+			ipv6: !!s.ipv6Prefix,
+			ipv4: s.exposeIpv4,
 		})),
 	})
 }
