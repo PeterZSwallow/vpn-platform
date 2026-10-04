@@ -26,10 +26,8 @@ IPV6=1
 IPV6_PREFIX=""
 IPV6_ONLY=0
 XUI_VERSION="latest"
-# Xray core used instead of the one bundled with 3x-ui. sing-box clients (the
-# iOS app) fail REALITY authentication against Xray 26.x, so pin a release
-# that is verified to work with them. See docs/node-setup.md.
-XRAY_VERSION="v25.12.8"
+# Optional Xray core release to use instead of the one bundled with 3x-ui
+XRAY_VERSION=""
 
 INSTALL_DIR=/usr/local/x-ui
 STATE_FILE=/root/vpn-node.env
@@ -49,7 +47,7 @@ Usage: install.sh [options]
   --panel-port N      3x-ui panel port (default: random 20000-60000)
   --host HOST         Public IP/domain clients connect to (default: auto-detect)
   --xui-version TAG   3x-ui release tag (default: latest)
-  --xray-version TAG  Xray-core release tag (default: v25.12.8, sing-box compatible)
+  --xray-version TAG  Replace 3x-ui's bundled Xray core with this release
   --no-ipv6           Do not set up per-client IPv6 addresses
   --ipv6-prefix P     Prefix to hand out to clients (default: upper /65 of the
                       server's /64, e.g. 2a01:4f8:c17:1234:8000::/65)
@@ -266,11 +264,13 @@ fi
 XUI="$INSTALL_DIR/x-ui"
 XRAY="$INSTALL_DIR/bin/xray-linux-${ARCH}"
 
-log "Installing Xray core $XRAY_VERSION"
-curl -fsSL --retry 3 -o "$TMP/xray.zip" \
-	"https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${XRAY_ASSET}"
-unzip -qo "$TMP/xray.zip" xray -d "$TMP/xray"
-install -m 755 "$TMP/xray/xray" "$XRAY"
+if [[ -n "$XRAY_VERSION" ]]; then
+	log "Installing Xray core $XRAY_VERSION"
+	curl -fsSL --retry 3 -o "$TMP/xray.zip" \
+		"https://github.com/XTLS/Xray-core/releases/download/${XRAY_VERSION}/${XRAY_ASSET}"
+	unzip -qo "$TMP/xray.zip" xray -d "$TMP/xray"
+	install -m 755 "$TMP/xray/xray" "$XRAY"
+fi
 
 PANEL_USER="admin_$(rand_alnum 6)"
 PANEL_PASS="$(rand_alnum 24)"

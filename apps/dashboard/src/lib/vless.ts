@@ -28,91 +28,120 @@ function vlessOutbound(
 	tag: string,
 ) {
 	return {
-		type: "vless",
 		tag,
-		server: address,
-		server_port: server.port,
-		uuid: clientUuid,
-		flow: server.flow,
-		tls: {
-			enabled: true,
-			server_name: server.realitySni,
-			utls: { enabled: true, fingerprint: server.fingerprint },
-			reality: {
-				enabled: true,
-				public_key: server.realityPublicKey,
-				short_id: server.realityShortId,
+		protocol: "vless",
+		settings: {
+			vnext: [
+				{
+					address,
+					port: server.port,
+					users: [{ id: clientUuid, encryption: "none", flow: server.flow }],
+				},
+			],
+		},
+		streamSettings: {
+			network: "tcp",
+			security: "reality",
+			realitySettings: {
+				serverName: server.realitySni,
+				fingerprint: server.fingerprint,
+				publicKey: server.realityPublicKey,
+				shortId: server.realityShortId,
 			},
 		},
 	}
 }
 
+// Traffic that must not enter the tunnel. Listed explicitly because the app
+// ships without geoip.dat.
+const LOCAL_NETWORKS = [
+	"0.0.0.0/8",
+	"10.0.0.0/8",
+	"100.64.0.0/10",
+	"127.0.0.0/8",
+	"169.254.0.0/16",
+	"172.16.0.0/12",
+	"192.168.0.0/16",
+	"224.0.0.0/4",
+	"255.255.255.255/32",
+	"::1/128",
+	"fc00::/7",
+	"fe80::/10",
+	"ff00::/8",
+]
+
 /**
- * Full sing-box (1.12+) config for the iOS Packet Tunnel (libbox).
- * Built server-side so routing/DNS can be changed without an app update.
+ * Xray-core client config for the iOS Packet Tunnel (libXray). The app adds
+ * env["xray.tun.fd"] with the utun file descriptor before starting it.
+ * Built server-side so routing can be changed without an app update.
  *
- * addresses are tried as alternatives (e.g. the device's personal IPv6 and the
- * node's IPv4): with more than one, a urltest group keeps whichever works.
+ * addresses are alternatives for the same node (the device's personal IPv6
+ * and the node's IPv4): with more than one, a leastPing balancer probes them
+ * and keeps whichever works.
  */
-export function singBoxConfig(
+export function xrayClientConfig(
 	server: Server,
 	clientUuid: string,
 	addresses: string[] = [server.host],
 ) {
 	if (addresses.length === 0) throw new Error("no addresses")
-	const proxies =
-		addresses.length === 1
-			? [vlessOutbound(server, clientUuid, addresses[0] as string, "proxy")]
-			: addresses.map((a, i) =>
-					vlessOutbound(
-						server,
-						clientUuid,
-						a,
-						`proxy-${isIPv6(a) ? "v6" : "v4"}-${i}`,
-					),
-				)
-	const group =
-		proxies.length > 1
-			? [
-					{
-						type: "urltest",
-						tag: "proxy",
-						outbounds: proxies.map((p) => p.tag),
-						url: "https://www.gstatic.com/generate_204",
-						interval: "3m",
-						tolerance: 300,
-					},
-				]
-			: []
+	const multi = addresses.length > 1
+	const proxies = addresses.map((a, i) =>
+		vlessOutbound(
+			server,
+			clientUuid,
+			a,
+			multi ? `proxy-${isIPv6(a) ? "v6" : "v4"}-${i}` : "proxy",
+		),
+	)
 
 	return {
-		log: { level: "warn" },
-		dns: {
-			servers: [
-				{ type: "https", tag: "remote", server: "1.1.1.1", detour: "proxy" },
-				{ type: "local", tag: "local" },
-			],
-			final: "remote",
-		},
+		log: { loglevel: "warning" },
 		inbounds: [
 			{
-				type: "tun",
-				tag: "tun-in",
-				address: ["172.19.0.1/30", "fdfe:dcba:9876::1/126"],
-				auto_route: true,
-				strict_route: true,
-				stack: "mixed",
+				tag: "tun",
+				port: 0,
+				protocol: "tun",
+				settings: { name: "utun", mtu: 1500 },
+				sniffing: { enabled: true, destOverride: ["http", "tls", "quic"] },
 			},
 		],
-		outbounds: [...group, ...proxies, { type: "direct", tag: "direct" }],
-		route: {
+		// The first outbound is the default route when there is no balancer
+		outbounds: [
+			...proxies,
+			{ tag: "direct", protocol: "freedom" },
+			{ tag: "block", protocol: "blackhole" },
+		],
+		routing: {
+			domainStrategy: "AsIs",
 			rules: [
-				{ action: "sniff" },
-				{ protocol: "dns", action: "hijack-dns" },
-				{ ip_is_private: true, outbound: "direct" },
+				{ type: "field", ip: LOCAL_NETWORKS, outboundTag: "direct" },
+				...(multi
+					? [{ type: "field", network: "tcp,udp", balancerTag: "auto" }]
+					: []),
 			],
-			final: "proxy",
-			default_domain_resolver: "local",
+			...(multi
+				? {
+						balancers: [
+							{
+								tag: "auto",
+								selector: ["proxy-"],
+								strategy: { type: "leastPing" },
+								fallbackTag: proxies[proxies.length - 1]?.tag,
+							},
+						],
+					}
+				: {}),
 		},
+		...(multi
+			? {
+					observatory: {
+						subjectSelector: ["proxy-"],
+						probeUrl: "https://www.gstatic.com/generate_204",
+						probeInterval: "1m",
+						enableConcurrency: true,
+					},
+				}
+			: {}),
 	}
 }

@@ -3,7 +3,7 @@
 Платформа для VPN-сервиса на VLESS + Reality:
 
 - **`apps/dashboard`**: админ-дашборд и API для iOS-приложения (Next.js, Postgres, Drizzle).
-- **`apps/ios`**: iOS-приложение (SwiftUI, Packet Tunnel и sing-box, AdMob, RevenueCat или StoreKit 2). *В разработке.*
+- **`apps/ios`**: iOS-приложение (SwiftUI, Packet Tunnel и Xray-core через libXray, AdMob, RevenueCat или StoreKit 2).
 - **`infra/node/install.sh`**: установка VPN-ноды одной командой. Скрипт ставит 3x-ui и Xray, создаёт VLESS + Reality и регистрирует ноду в дашборде. Подробнее в [docs/node-setup.md](docs/node-setup.md).
 
 ![Серверы](docs/screenshots/servers.png)
@@ -22,7 +22,7 @@ iPhone app ──HTTPS──► dashboard API ──API панели──► VP
 2. `GET /api/v1/config` сообщает приложению, какой биллинг использовать (RevenueCat или StoreKit; переключается в дашборде) и какие рекламные блоки показывать.
 3. Бесплатный пользователь смотрит rewarded-рекламу. AdMob вызывает `/api/v1/ads/admob-ssv` (подпись проверяется), и устройству начисляется N минут.
 4. Премиум приходит из вебхука RevenueCat или App Store Server Notifications, либо приложение само отправляет транзакцию StoreKit 2.
-5. `POST /api/v1/connect` проверяет доступ, создаёт на ноде **личного** VLESS-клиента устройства со сроком действия, равным оплаченному или «рекламному» времени, и возвращает готовый sing-box-конфиг.
+5. `POST /api/v1/connect` проверяет доступ, создаёт на ноде **личного** VLESS-клиента устройства со сроком действия, равным оплаченному или «рекламному» времени, и возвращает готовый конфиг Xray для приложения.
 6. Если у ноды есть IPv6, каждое устройство получает **свой IPv6-адрес** из её подсети. Заблокированный адрес приложение меняет на новый через `rotateIpv6`.
 7. Когда время заканчивается (или при возврате денег и бане), нода сама отключает клиента. Даже сохранённый конфиг перестаёт работать.
 
@@ -77,6 +77,6 @@ curl -fsSL https://<дашборд>/install.sh | sudo bash -s -- \
 | GET | `/api/v1/config` | биллинг-провайдер, ключи SDK, рекламные блоки |
 | GET | `/api/v1/me` | `{premium, premiumUntil, freeUntil, needsAd}` |
 | GET | `/api/v1/servers` | список серверов, у каждого флаг `locked` |
-| POST | `/api/v1/connect` | `{serverId, ipv6?, rotateIpv6?}` → `{expiresAt, addresses, ipv6Address, vlessUri, singBox}`; ошибки `ad_required`, `premium_required`, `banned`, `ipv6_required` |
+| POST | `/api/v1/connect` | `{serverId, ipv6?, rotateIpv6?}` → `{expiresAt, addresses, ipv6Address, vlessUri, xray}`; ошибки `ad_required`, `premium_required`, `banned`, `ipv6_required` |
 | POST | `/api/v1/subscription/refresh` | перечитать подписку в RevenueCat сразу после покупки |
 | POST | `/api/v1/subscription/storekit` | `{signedTransaction}` (StoreKit 2 `jwsRepresentation`) |

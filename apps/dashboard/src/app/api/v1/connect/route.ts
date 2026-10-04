@@ -8,7 +8,7 @@ import { apiError, authDevice } from "@/lib/api"
 import { ipv6InPrefix, randomIpv6InPrefix } from "@/lib/ipv6"
 import { provisionClient } from "@/lib/panels"
 import { getSettings } from "@/lib/settings"
-import { singBoxConfig, vlessUri } from "@/lib/vless"
+import { vlessUri, xrayClientConfig } from "@/lib/vless"
 
 // A device may move to a new IPv6 at most this often
 const ROTATE_COOLDOWN_MS = 10 * 60 * 1000
@@ -120,6 +120,6 @@ export async function POST(req: Request) {
 		ipv6Address: useIpv6 ? client.ipv6Address : null,
 		ipv6Rotated: rotated,
 		vlessUri: vlessUri(server, clientUuid, addresses[0]),
-		singBox: singBoxConfig(server, clientUuid, addresses),
+		xray: xrayClientConfig(server, clientUuid, addresses),
 	})
 }
