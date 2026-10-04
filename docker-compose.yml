@@ -1,0 +1,45 @@
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: vpn
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-vpn}
+      POSTGRES_DB: vpn
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  migrate:
+    image: oven/bun:1
+    working_dir: /app/apps/dashboard
+    volumes:
+      - .:/app
+    environment:
+      DATABASE_URL: postgres://vpn:${POSTGRES_PASSWORD:-vpn}@db:5432/vpn
+    command: sh -c "cd /app && bun install --frozen-lockfile && cd apps/dashboard && bunx drizzle-kit migrate"
+    depends_on: [db]
+
+  dashboard:
+    build:
+      context: .
+      dockerfile: apps/dashboard/Dockerfile
+    restart: unless-stopped
+    env_file: apps/dashboard/.env
+    environment:
+      DATABASE_URL: postgres://vpn:${POSTGRES_PASSWORD:-vpn}@db:5432/vpn
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+
+  # Pings every node once a minute so dead servers disappear from the app
+  health-cron:
+    image: curlimages/curl
+    restart: unless-stopped
+    env_file: apps/dashboard/.env
+    entrypoint: ["sh", "-c", "while true; do curl -s -H \"Authorization: Bearer $$CRON_SECRET\" http://dashboard:3000/api/cron/health > /dev/null; sleep 60; done"]
+    depends_on: [dashboard]
+
+volumes:
+  pgdata:
