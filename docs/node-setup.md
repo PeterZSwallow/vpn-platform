@@ -32,7 +32,7 @@ curl -fsSL https://<дашборд>/install.sh | sudo bash -s -- \
 | `--country CC` | — | Код страны (обязателен при регистрации) |
 | `--city`, `--name` | — | Как сервер выглядит в приложении |
 | `--tier free\|premium` | `free` | `premium` — только для подписчиков |
-| `--sni DOMAIN` | `www.microsoft.com` | Сайт-маскировка Reality (см. ниже) |
+| `--sni DOMAIN` | `google.com` | Сайт-маскировка Reality (см. ниже) |
 | `--port N` | `443` | Порт VLESS |
 | `--panel-port N` | случайный | Порт панели 3x-ui |
 | `--host HOST` | авто | Публичный IP или домен ноды |

@@ -16,7 +16,7 @@ NAME=""
 COUNTRY=""
 CITY=""
 TIER="free"
-SNI="www.microsoft.com"
+SNI="google.com"
 VLESS_PORT=443
 PANEL_PORT=""
 HOST=""
@@ -40,7 +40,7 @@ Usage: install.sh [options]
   --country CC        ISO country code, e.g. NL (required with --dashboard)
   --city CITY         City shown in the app
   --tier free|premium Who can use the server (default: free)
-  --sni DOMAIN        Reality camouflage site (default: www.microsoft.com)
+  --sni DOMAIN        Reality camouflage site (default: google.com)
   --port N            VLESS port (default: 443)
   --panel-port N      3x-ui panel port (default: random 20000-60000)
   --host HOST         Public IP/domain clients connect to (default: auto-detect)
