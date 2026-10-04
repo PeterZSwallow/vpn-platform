@@ -24,9 +24,11 @@ jobs:
           go-version: stable
           cache: false
 
-      - name: Cache LibXray.xcframework
+      # Restore/save separately so the slow libXray build is cached even
+      # when the app build later fails
+      - name: Restore LibXray.xcframework
         id: libxray
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: apps/ios/Frameworks/LibXray.xcframework
           key: libxray-${{ hashFiles('apps/ios/scripts/build-libxray.sh') }}
@@ -34,6 +36,13 @@ jobs:
       - name: Build LibXray.xcframework
         if: steps.libxray.outputs.cache-hit != 'true'
         run: ./scripts/build-libxray.sh
+
+      - name: Save LibXray.xcframework
+        if: steps.libxray.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: apps/ios/Frameworks/LibXray.xcframework
+          key: libxray-${{ hashFiles('apps/ios/scripts/build-libxray.sh') }}
 
       - name: Generate Xcode project
         run: |

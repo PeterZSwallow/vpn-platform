@@ -27,7 +27,7 @@ final class AdsManager: NSObject, ObservableObject {
         if !started {
             // Ask before the SDK starts so it can use the IDFA if allowed
             _ = await ATTrackingManager.requestTrackingAuthorization()
-            MobileAds.shared.start()
+            await MobileAds.shared.start()
             started = true
         }
         await loadRewarded()

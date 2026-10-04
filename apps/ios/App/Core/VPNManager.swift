@@ -1,5 +1,5 @@
 import Foundation
-import NetworkExtension
+@preconcurrency import NetworkExtension
 
 /// Owns the app's NETunnelProviderManager (the VPN profile in iOS Settings).
 @MainActor
